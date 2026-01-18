@@ -1,0 +1,7 @@
+{
+  "name": "Assistant Vocal Gemini",
+  "description": "Un assistant vocal en temps réel utilisant Gemini Live API, configuré pour parler français.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

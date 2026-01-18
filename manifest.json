@@ -1,0 +1,17 @@
+
+{
+  "name": "Gemini Assistant Vocal",
+  "short_name": "Gemini AI",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "description": "Assistant vocal intelligent propulsé par Gemini 3",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/527/527489.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

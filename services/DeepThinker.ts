@@ -1,0 +1,1 @@
+// Service supprimé pour simplification et performance.
