@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLiveAudio } from './hooks/useLiveAudio';
 import SystemSettings from './components/SystemSettings';
+import ErrorBoundary from './components/ErrorBoundary';
 import MonitoringPanel from './components/MonitoringPanel';
 import OfflineBanner from './components/OfflineBanner';
 import { copyToClipboard } from './utils/clipboardUtils';
@@ -646,7 +647,9 @@ const App: React.FC = () => {
 
       {/* Monitor Overlay */}
       <div className={`fixed inset-x-0 bottom-0 h-[80vh] bg-black z-[120] border-t border-zinc-800 transition-transform duration-500 ease-out ${showMonitor ? 'translate-y-0' : 'translate-y-full'}`}>
-        <MonitoringPanel logs={logs} onClear={clearLogs} onClose={() => setShowMonitor(false)} />
+        <ErrorBoundary>
+          <MonitoringPanel logs={logs} onClear={clearLogs} onClose={() => setShowMonitor(false)} />
+        </ErrorBoundary>
       </div>
     </div>
   );
