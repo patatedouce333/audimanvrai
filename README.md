@@ -25,7 +25,7 @@ Audioman est une application vocale temps réel alimentée par Gemini 2.5 Native
 ### Stack
 - **Frontend :** React 19 + TypeScript + Vite 6
 - **API IA :** Gemini 2.5 Native Audio (Live API)
-- **SDK :** @google/genai v1.34.0
+- **SDK :** @google/generative-ai v0.24.1
 - **Audio :** WebRTC + Web Audio API (16kHz input / 24kHz output)
 
 ### Flux de Données

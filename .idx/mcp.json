@@ -20,52 +20,32 @@
       ],
       "alwaysAllow": []
     },
-    "browser-automation": {
+    "firebase-official": {
       "command": "npx",
       "args": [
         "-y",
-        "@modelcontextprotocol/server-puppeteer"
-      ],
-      "env": {
-        "DOCKER_MODE": "false"
-      },
-      "alwaysAllow": []
-    },
-    "web-fetch-fast": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@mcp-tools/fetch"
-      ],
-      "alwaysAllow": []
-    },
-    "git-local": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-git"
-      ],
-      "alwaysAllow": []
-    },
-    "sqlite-db": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-sqlite",
-        "--db-path",
-        "./fireball_memory.db"
-      ],
-      "alwaysAllow": []
-    },
-    "firebase": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "firebase-tools@latest",
-        "experimental:mcp",
-        "--only",
-        "auth,firestore"
+        "firebase-tools",
+        "mcp"
       ]
+    },
+    "tavily-search": {
+      "command": "npx",
+      "args": [
+        "-y",
+"tavily-mcp"      ],
+      "env": {
+        "TAVILY_API_KEY": "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"
+      }
+    },
+    "google-search": {
+      "command": "npx",
+      "args": [
+        "-y",
+"@mcp-server/google-search-mcp"      ],
+      "env": {
+        "GOOGLE_API_KEY": "AIzaSyCmvCB8jYQWwdpfbuKwOvQA8lHnjwfAh_c",
+        "GOOGLE_SEARCH_ENGINE_ID": "25f5d0f96437b4c23"
+      }
     }
   }
 }
