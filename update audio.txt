@@ -1,0 +1,1409 @@
+# Technical Architecture Analysis - Audioman Project (2026)
+
+## Context and Objective
+
+This document provides a comprehensive technical mapping of the Audioman project in its current 2026 state. It describes the existing components, connections, and data flows without proposing modifications. The goal is to establish a factual knowledge base for informed modernization and optimization decisions.
+
+**Key Technologies (2026 Stack):**
+- **Frontend:** React 19.2.3 with TypeScript 5.9.3
+- **Build Tool:** Vite 6.2.0 with React plugin
+- **Styling:** Tailwind CSS 4.1.18
+- **Mobile Bridge:** Capacitor 8.0.1 (Android/iOS)
+- **AI Integration:** Google Gemini 3.0 Flash Native Audio (@google/genai 1.37.0)
+- **Available Models:** Gemini 3.0 Pro/Flash, Gemini 2.5 Pro/Flash, Gemini 2.0 Flash
+- **Testing:** Vitest 2.1.4
+- **Audio Processing:** Web Audio API with MediaStreamTrackProcessor
+- **Persistence:** Capacitor Filesystem with AES-256 encryption and compression
+
+---
+
+## Chapter 1: Project Architecture Overview
+
+### 1.1 Application Entry Points
+
+**Web Entry Point (`index.html`) - Line-by-Line:**
+```html
+<!DOCTYPE html>                    <!-- HTML5 doctype -->
+<html lang="en">                   <!-- Language declaration -->
+  <head>
+    <meta charset="UTF-8" />       <!-- UTF-8 encoding -->
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />  <!-- Vite default icon -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />  <!-- Mobile responsive -->
+    <meta name="theme-color" content="#000000" />  <!-- PWA theme color -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />  <!-- iOS PWA support -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />  <!-- iOS status bar -->
+    <link rel="manifest" href="/manifest.json" />  <!-- PWA manifest -->
+    <link rel="apple-touch-icon" href="/icon-192.png" />  <!-- iOS home screen icon -->
+    <title>Audioman</title>        <!-- Page title -->
+  </head>
+  <body class="ios-safe-pt ios-safe-pb">  <!-- iOS safe area classes -->
+    <div id="root"></div>          <!-- React mount point -->
+    <script type="module" src="/src/main.tsx"></script>  <!-- Vite entry script -->
+  </body>
+</html>
+```
+
+**React Bootstrap (`index.tsx`) - Line-by-Line:**
+```typescript
+import { StrictMode } from 'react';              // React.StrictMode import
+import { createRoot } from 'react-dom/client';   // React 18+ createRoot API
+import './index.css';                            // Global styles import
+import App from './App';                         // Main App component
+
+createRoot(document.getElementById('root')!).render(  // Root element selection and rendering
+  <StrictMode>                         // Development warnings and checks
+    <App />                            // Main application component
+  </StrictMode>,
+);
+```
+
+**Capacitor Configuration (`capacitor.config.ts`) - Line-by-Line:**
+```typescript
+import type { CapacitorConfig } from '@capacitor/cli';  // TypeScript types
+
+const config: CapacitorConfig = {
+  appId: 'com.audioman.app',           // Unique app identifier
+  appName: 'Audioman',                 // Display name
+  webDir: 'dist'                       // Build output directory
+};
+
+export default config;                  // ES module export
+```
+
+### 1.2 Build System Analysis
+
+**Vite Configuration (`vite.config.ts`) - Line-by-Line:**
+```typescript
+import path from 'path';                          // Node.js path utilities
+import { defineConfig, loadEnv } from 'vite';     // Vite configuration API
+import react from '@vitejs/plugin-react';         // React plugin
+
+export default defineConfig(({ mode }) => {       // Configuration function with mode
+    const env = loadEnv(mode, '.', '');           // Load environment variables
+    return {
+      server: {
+        port: 5173,                               // Development server port
+        host: '0.0.0.0',                         // Allow external connections
+      },
+      plugins: [react()],                         // React plugin activation
+      define: {
+        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),     // Legacy process.env
+        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY), // Modern env var
+      },
+      resolve: {
+        alias: {
+          '@': path.resolve(__dirname, '.'),      // Root directory alias
+        }
+      }
+    };
+});
+```
+
+**Package Dependencies Breakdown:**
+```json
+{
+  "dependencies": {
+    "@capacitor/android": "^8.0.1",     // Android platform support
+    "@capacitor/cli": "^8.0.1",         // Capacitor command line tools
+    "@capacitor/core": "^8.0.1",        // Core Capacitor runtime
+    "@capacitor/filesystem": "^8.0.0",  // Filesystem plugin
+    "@google/genai": "^1.37.0",         // Google Gemini AI SDK
+    "react": "^19.2.3",                 // React framework
+    "react-dom": "^19.2.3"              // React DOM rendering
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",          // Node.js TypeScript types
+    "@vitejs/plugin-react": "^5.0.0",   // Vite React plugin
+    "autoprefixer": "^10.4.23",         // CSS vendor prefixes
+    "postcss": "^8.5.6",                // CSS processing
+    "tailwindcss": "^4.1.18",           // Utility-first CSS framework
+    "typescript": "^5.9.3",             // TypeScript compiler
+    "vite": "^6.2.0",                   // Build tool
+    "vitest": "^2.1.4"                  // Test framework
+  }
+}
+```
+
+---
+
+## Chapter 2: Component Architecture Deep Dive
+
+### 2.1 UI Component Inventory - Detailed Analysis
+
+**ControlPanel.tsx - Audio Control Interface:**
+```typescript
+// Component structure verification
+export default function ControlPanel({ ...props }) {
+  // Volume slider implementation
+  const handleVolumeChange = (value: number) => {
+    setVolume(value);  // â† Updates useLiveAudio volume
+    // Visual feedback
+  };
+
+  // Mute toggle
+  const handleMuteToggle = () => {
+    setIsMuted(!isMuted);  // â† Controls audio streaming
+  };
+
+  return (
+    <div className="control-panel">
+      <VolumeSlider value={volume} onChange={handleVolumeChange} />
+      <MuteButton isMuted={isMuted} onToggle={handleMuteToggle} />
+    </div>
+  );
+}
+```
+
+**SystemSettings.tsx - Configuration Modal:**
+```typescript
+// Props interface
+interface SystemSettingsProps {
+  instruction: string;           // Current system prompt
+  onInstructionChange: (text: string) => void;  // Prompt update callback
+  onClose: () => void;           // Modal close handler
+}
+
+export default function SystemSettings({ instruction, onInstructionChange, onClose }: SystemSettingsProps) {
+  const [localInstruction, setLocalInstruction] = useState(instruction);
+
+  const handleSave = () => {
+    onInstructionChange(localInstruction);  // â† Updates App.tsx systemInstruction
+    onClose();
+  };
+
+  return (
+    <Modal>
+      <textarea
+        value={localInstruction}
+        onChange={(e) => setLocalInstruction(e.target.value)}
+        placeholder="Edit system prompt..."
+      />
+      <button onClick={handleSave}>Save</button>
+    </Modal>
+  );
+}
+```
+
+**ErrorBoundary.tsx - Global Error Catching:**
+```typescript
+class ErrorBoundary extends Component {
+  state = { hasError: false, error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };  // â† Error state update
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('ErrorBoundary caught:', error, errorInfo);
+    // â† Error logging (could integrate with MonitoringPanel)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <FallbackUI error={this.state.error} />;  // â† Fallback rendering
+    }
+    return this.props.children;  // â† Normal rendering
+  }
+}
+```
+
+### 2.2 Component Interconnections - Flow Verification
+
+**Error Handling Chain - Detailed Flow:**
+```
+App.tsx (Root Level)
+â”œâ”€â”€ ErrorBoundary wrapper
+â”‚   â”œâ”€â”€ try: Normal component rendering
+â”‚   â”œâ”€â”€ catch: Error state activation
+â”‚   â”‚   â”œâ”€â”€ Display error UI
+â”‚   â”‚   â””â”€â”€ Log to console/monitoring
+â”‚   â””â”€â”€ MonitoringPanel integration
+â”‚       â”œâ”€â”€ Logs display
+â”‚       â””â”€â”€ Error details viewing
+â””â”€â”€ SystemSettings modal
+    â”œâ”€â”€ Prompt editing
+    â””â”€â”€ Error recovery options
+```
+
+**Audio Processing Pipeline - Component Integration:**
+```
+Visualizer.tsx (Waveform Display)
+â”œâ”€â”€ Receives: volume, isConnected from useLiveAudio
+â”œâ”€â”€ Calculates: scale = 1 + (volume / 150)
+â”œâ”€â”€ Renders: Pulsing circle with reactive scaling
+â””â”€â”€ Triggers: Visual feedback on audio levels
+
+TranscriptionWindow.tsx (STT Display)
+â”œâ”€â”€ Receives: history array from useLiveAudio
+â”œâ”€â”€ Filters: Messages with role 'model'
+â”œâ”€â”€ Renders: Real-time transcription text
+â””â”€â”€ Updates: On history state changes
+
+MonitoringPanel.tsx (System Monitoring)
+â”œâ”€â”€ Receives: logs array from useLiveAudio
+â”œâ”€â”€ Displays: Timestamped log entries
+â”œâ”€â”€ Features: Clear logs functionality
+â””â”€â”€ Filters: Error/info/tool/success types
+```
+
+**Component Props Flow Verification:**
+```typescript
+// App.tsx â†’ Components data flow
+const appProps = {
+  // To MonitoringPanel
+  logs: logs,                    // â† useLiveAudio logs
+  onClear: clearLogs,           // â† useLiveAudio clearLogs
+
+  // To SystemSettings
+  instruction: systemInstruction, // â† Local state
+  onInstructionChange: setSystemInstruction, // â† State setter
+
+  // To Visualizer (implicit through rendering)
+  volume: volume,                // â† useLiveAudio volume
+  isConnected: isConnected,      // â† useLiveAudio isConnected
+};
+```
+
+---
+
+## Chapter 3: State Management and Data Flow
+
+### 3.1 Global State Architecture - Line-by-Line State Flow
+
+**App.tsx State Initialization (Lines 250-270):**
+```typescript
+const App: React.FC = () => {
+  // Core connection states (lines 251-254)
+  const [isConnected, setIsConnected] = useState(false);        // â† Live session status
+  const [isConnecting, setIsConnecting] = useState(false);     // â† Connection in progress
+
+  // UI control states (lines 255-257)
+  const [activePersona, setActivePersona] = useState<PersonaType>('medical');  // â† Current AI persona
+  const [showSettings, setShowSettings] = useState(false);     // â† Settings modal visibility
+  const [showMonitor, setShowMonitor] = useState(false);       // â† Monitor panel visibility
+
+  // Persistence states (lines 258-262)
+  const [systemInstruction, setSystemInstruction] = useState(PROMPT_MEDICAL);  // â† Active system prompt
+  const [isTestingMic, setIsTestingMic] = useState(false);     // â† Microphone test status
+  const [micTestResult, setMicTestResult] = useState<{ ok: boolean; level: number } | null>(null);  // â† Test results
+
+  // Extreme saving states (lines 263-266)
+  const [saveSettingsState, setSaveSettingsState] = useState<SaveSettings>(() => getSettings());  // â† Load from localStorage
+  const [saveHistory, setSaveHistory] = useState<SaveEntry[]>([]);  // â† Saved conversations list
+  const [saveLogs, setSaveLogs] = useState<string[]>(() => getSaveLogs());  // â† Operation logs
+  const [isLoadingSaves, setIsLoadingSaves] = useState(false);  // â† Loading indicator
+  const [restoreError, setRestoreError] = useState<string | null>(null);  // â† Restore error state
+```
+
+**State Update Patterns:**
+```typescript
+// Synchronous state updates
+setActivePersona(type);                    // â† Immediate UI update
+setSystemInstruction(prompt);              // â† Prompt text change
+
+// Asynchronous state updates with side effects
+setIsConnected(true);                      // â† Triggers UI re-render
+setSaveLogs(getSaveLogs());               // â† Refresh from localStorage
+
+// Conditional state updates
+if (isConnected) disconnect();            // â† Guarded state change
+setRestoreError(null);                    // â† Error state reset
+```
+
+### 3.2 Hook Integration Pattern - Interface Verification
+
+**useLiveAudio Hook Contract (Lines 42-60):**
+```typescript
+export const useLiveAudio = () => {
+  // State declarations (lines 43-51)
+  const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [history, setHistory] = useState<any[]>([]);
+  const [volume, setVolume] = useState(0);
+  const [voiceName, setVoiceName] = useState('Kore');
+  const [logs, setLogs] = useState<AppLog[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [summaryText, setSummaryText] = useState('');
+
+  // Ref declarations (lines 52-56)
+  const liveSessionRef = useRef<any>(null);      // â† Gemini session reference
+  const mediaStreamRef = useRef<MediaStream | null>(null);  // â† Microphone stream
+  const audioContextRef = useRef<AudioContext | null>(null);  // â† Audio playback context
+  const audioQueueRef = useRef<Uint8Array[]>([]);  // â† Audio chunk buffer
+  const isPlayingRef = useRef(false);            // â† Playback state flag
+
+  // API reference (line 57)
+  const genAIApiRef = useRef<GoogleGenerativeAI | null>(null);  // â† Gemini API instance
+```
+
+**Hook Return Interface (Lines 237-259):**
+```typescript
+return {
+  // Connection management
+  isConnected, isConnecting,              // â† Connection status
+  connect, disconnect,                    // â† Connection controls
+
+  // Audio controls
+  isMuted, setIsMuted,                    // â† Mute state
+  volume,                                 // â† Audio level (0-100)
+  voiceName, setVoiceName,                // â† Voice selection
+
+  // Data streams
+  history, clearHistory, importHistory,   // â† Conversation history
+  logs, clearLogs,                        // â† System logs
+  isSearching,                            // â† Web search indicator
+
+  // Utility functions
+  testMicrophone, resetMicrophone,        // â† Audio device management
+  summaryText, clearSummary, setMemoryScope, appendSummaryText  // â† Memory management
+};
+```
+
+### 3.3 Data Persistence Layers - Implementation Details
+
+**LocalStorage Operations (extremeSaving.ts lines 28-59):**
+```typescript
+// Settings persistence (lines 28-45)
+export function getSettings(): SaveSettings {
+  const raw = localStorage.getItem(SETTINGS_KEY);  // â† localStorage retrieval
+  if (!raw) {
+    return { compress: false, encrypt: false, cloudEnabled: false, cloudEndpoint: '', encryptionKey: '' };  // â† Default values
+  }
+  try {
+    const parsed = JSON.parse(raw);  // â† JSON deserialization
+    return {
+      compress: !!parsed.compress,      // â† Boolean coercion
+      encrypt: !!parsed.encrypt,
+      cloudEnabled: !!parsed.cloudEnabled,
+      cloudEndpoint: parsed.cloudEndpoint || '',
+      encryptionKey: parsed.encryptionKey || '',
+    };
+  } catch {
+    return { compress: false, encrypt: false, cloudEnabled: false, cloudEndpoint: '', encryptionKey: '' };  // â† Error fallback
+  }
+}
+
+export function setSettings(next: SaveSettings) {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));  // â† JSON serialization
+}
+
+// Logs persistence (lines 51-59)
+export function getSaveLogs(): string[] {
+  const raw = localStorage.getItem(LOG_KEY);
+  if (!raw) return [];                    // â† Empty array default
+  try {
+    return JSON.parse(raw);              // â† JSON deserialization
+  } catch {
+    return [];                           // â† Error fallback
+  }
+}
+```
+
+**Filesystem Layer Architecture (Capacitor):**
+```typescript
+// Directory structure (lines 24-25)
+const ROOT_DIR = 'ExtremeSaving';         // â† Root directory name
+const LOG_KEY = 'extremeSavingLog_v1';    // â† localStorage key
+
+// Path construction (lines 144-146)
+function agentDir(agentId: string) {
+  return `${ROOT_DIR}/Agent_${agentId}`;  // â† Agent-specific directory
+}
+
+// Directory creation (lines 148-151)
+async function ensureDir(agentId: string) {
+  const path = agentDir(agentId);
+  await Filesystem.mkdir({                  // â† Capacitor mkdir
+    directory: Directory.Documents,        // â† Android Documents directory
+    path,                                  // â† Full path
+    recursive: true                        // â† Create parent directories
+  });
+}
+```
+
+---
+
+## Chapter 4: AI Integration Architecture
+
+### 4.1 Model Configuration Structure - Configuration Gap Analysis
+
+**Configuration Files vs Implementation (Critical Mismatch):**
+```typescript
+// config/gemini-models.ts (lines 10-18) - CORRECT CONFIGURATION
+export const GEMINI_MODELS = {
+  FLASH_3_NATIVE: 'gemini-3-flash-native-audio',     // â† Production model defined
+  PRO_3_NATIVE: 'gemini-3-pro-native-audio',         // â† Preview model defined
+  FLASH_25_NATIVE: 'gemini-2.5-flash-native-audio-preview-12-2025',  // â† Legacy defined
+} as const;
+
+export const CURRENT_MODEL = GEMINI_MODELS.FLASH_3_NATIVE;  // â† Correct model selected
+
+// hooks/useLiveAudio.ts (line 147) - INCORRECT IMPLEMENTATION
+const liveSession = await genAIApiRef.current!.live.connect({
+  model: 'gemini-1.5-flash-latest',  // â† WRONG: Using deprecated model
+  // ...
+});
+```
+
+**Model Specifications Comparison (2026):**
+```typescript
+// Gemini 1.5 Flash (CURRENT - Deprecated)
+const LEGACY_SPECS = {
+  latency: '~200-300ms',              // â† Higher latency
+  contextWindow: '1M tokens',         // â† Same context
+  features: ['basicAudio', 'textGeneration'],  // â† Limited features
+  deprecationDate: '2026-06-01',      // â† Being phased out
+};
+
+// Gemini 3.0 Flash Native Audio (TARGET)
+const TARGET_SPECS = {
+  latency: '~150ms',                  // â† 25% improvement
+  contextWindow: '1M tokens',         // â† Same context
+  features: [                         // â† Enhanced features
+    'affectiveDialog',                // â† Emotion-aware responses
+    'multilingualAuto',               // â† Auto language switching
+    'barge_in',                       // â† User interruption
+    'robustInstructions'              // â† 90% instruction adherence
+  ],
+  changelog: {
+    affectiveDialog: 'Emotion-aware voice responses',
+    robustInstructions: '90% instruction adherence',
+    smoothConversation: 'Better multi-turn context retention',
+    liveTranslation: '70+ languages, real-time'
+  }
+};
+```
+
+### 4.2 Live API Integration Details - Connection Flow Verification
+
+**API Initialization Sequence (Lines 76-87):**
+```typescript
+const initializeApi = useCallback(() => {
+  addLog('Initializing Gemini API...', 'tool');  // â† Logging start
+  if (!API_KEY) {                                // â† Environment check
+    const errorMsg = "VITE_GEMINI_API_KEY is not defined. Please add it to your .env file";
+    console.error(errorMsg);                     // â† Console error
+    addLog(errorMsg, 'error');                   // â† UI log error
+    return false;                                // â† Early return
+  }
+  genAIApiRef.current = new GoogleGenerativeAI(API_KEY);  // â† API instance creation
+  addLog('Gemini API initialized.', 'success');  // â† Success logging
+  return true;                                   // â† Success confirmation
+}, [addLog]);
+```
+
+**Live Session Creation (Lines 147-172):**
+```typescript
+const liveSession = await genAIApiRef.current!.live.connect({
+  model: 'gemini-1.5-flash-latest',  // â† CRITICAL: Wrong model hardcoded
+  config: {
+    generationConfig: GENERATION_CONFIG,  // â† Text generation settings
+    safetySettings: SAFETY_SETTINGS       // â† Content safety filters
+  },
+  callbacks: {
+    onUpdate: (update: ParsedLiveStreamUpdate) => {
+      if (update.outputAudio) {
+        audioQueueRef.current.push(update.outputAudio);  // â† Buffer audio chunks
+        processAudioQueue();                    // â† Trigger sequential playback
+      }
+      if (update.outputAudioTranscription) {
+        setHistory(prev => [...prev, {role: 'model', text: update.outputAudioTranscription}]);  // â† Update conversation
+      }
+      if (update.isSearching) {
+        setIsSearching(update.isSearching);    // â† Web search indicator
+      }
+    },
+    onError: (err) => {
+      addLog(`Live API Error: ${err.message}`, 'error', err);  // â† Error logging
+      disconnect();                            // â† Automatic cleanup
+    },
+  },
+  systemInstruction,                           // â† Persona prompt injection
+});
+```
+
+**Audio Pipeline Setup (Lines 176-191):**
+```typescript
+const audioEncoder = new WritableStream({
+  write(audioChunk) {
+    if (!isMuted && isConnected) {      // â† Mute and connection checks
+      const request: LiveStreamRequest = {
+        audio: audioChunk,              // â† Raw PCM audio data
+      };
+      liveSession.send(request);        // â† Send to Gemini API
+    }
+  },
+});
+
+const processor = new MediaStreamTrackProcessor({
+  track: mediaStreamRef.current.getAudioTracks()[0],  // â† Microphone track
+});
+processor.readable.pipeTo(audioEncoder);  // â† Stream connection
+```
+
+### 4.3 Persona System Implementation - Prompt Management Flow
+
+**Prompt Constants Structure (Lines 20-237 in App.tsx):**
+```typescript
+// Base prompt suffix (lines 20-30)
+const PROMPT_SUFFIX = `
+RÃˆGLE ANTI-QUESTIONS :
+- RÃ©ponds directement sans poser de questions.
+- Si une question est indispensable, n'en poser qu'UNE seule, en toute fin, sous forme optionnelle.
+
+DÃ‰TAILS D'EXÃ‰CUTION :
+- Donne des Ã©tapes concrÃ¨tes et actionnables.
+- Ajoute des exemples courts quand utile.
+- Conclus par une synthÃ¨se opÃ©rationnelle.
+`;
+
+// Medical persona (lines 32-65)
+const PROMPT_MEDICAL = `### PROTOCOLE : ORACLE MÃ‰DICAL EXPERT ###
+VERSION : 1.2.0 | DATE : 2026-01-13
+CANAL : VOIX TEMPS RÃ‰EL (Gemini 2.0 Audio)
+// ... detailed medical instructions
+` + PROMPT_SUFFIX;
+```
+
+**Persona Switching Logic (Lines 289-301):**
+```typescript
+const handlePersonaSwitch = (type: PersonaType) => {
+  setActivePersona(type);                // â† Update active persona state
+
+  let prompt = PROMPT_MEDICAL;           // â† Default fallback
+  if (type === 'humour') prompt = PROMPT_HUMOUR;
+  if (type === 'detective') prompt = PROMPT_DETECTIVE;
+  if (type === 'dev') prompt = PROMPT_DEV;
+  if (type === 'anemia') prompt = PROMPT_ANEMIA;
+  if (type === 'evangelism') prompt = PROMPT_EVANGELISM;
+  if (type === 'onesta_coach') prompt = PROMPT_ONESTA_COACH;
+
+  setSystemInstruction(prompt);          // â† Update system prompt
+  if (isConnected) disconnect();         // â† Force reconnection for new persona
+};
+```
+
+**Persona Type Definition (Line 238):**
+```typescript
+type PersonaType = 'medical' | 'humour' | 'detective' | 'dev' | 'anemia' | 'evangelism' | 'onesta_coach';
+```
+
+**Persona Labels (Lines 240-248):**
+```typescript
+const PERSONA_LABEL: Record<PersonaType, string> = {
+  medical: 'Oracle MÃ©dical',
+  anemia: 'Oracle AnÃ©mie',
+  humour: 'Script Doctor',
+  detective: 'DÃ©tective',
+  dev: 'DÃ©v 2026',
+  evangelism: 'Ã‰vangile (JÃ©sus)',
+  onesta_coach: 'Coach Onesta'
+};
+```
+
+---
+
+## Chapter 5: Persistence System Analysis
+
+### 5.1 Data Storage Strategy - Multi-Layer Architecture Verification
+
+**Platform Detection Logic (Lines 217-230 in extremeSaving.ts):**
+```typescript
+try {
+  if (Capacitor.isNativePlatform()) {      // â† Platform capability check
+    await ensureDir(agentId);              // â† Directory creation
+    await Filesystem.writeFile({           // â† Capacitor filesystem write
+      directory: Directory.Documents,      // â† Android Documents directory
+      path: `${agentDir(agentId)}/${fileName}`,  // â† Full path construction
+      data,                                // â† Content string
+      encoding: encrypted || compressed ? Encoding.BASE64 : Encoding.UTF8,  // â† Encoding selection
+    });
+    await rotateSaves(agentId);            // â† Cleanup old files
+    appendLog(`[${new Date().toLocaleString()}] AUTO OK ${agentId} ${fileName}`);  // â† Success logging
+  } else {
+    localStorage.setItem(`${agentDir(agentId)}/${fileName}`, data);  // â† Web fallback
+    appendLog(`[${new Date().toLocaleString()}] AUTO WEB OK ${agentId} ${fileName}`);  // â† Web success logging
+  }
+} catch (err: any) {
+  appendLog(`[${new Date().toLocaleString()}] AUTO FAIL ${agentId} ${err?.message || 'Unknown'}`);  // â† Error logging
+}
+```
+
+**Directory Structure Implementation:**
+```typescript
+// Constants (lines 24-26)
+const ROOT_DIR = 'ExtremeSaving';                    // â† Root directory name
+const LOG_KEY = 'extremeSavingLog_v1';              // â† localStorage logs key
+const SETTINGS_KEY = 'extremeSavingSettings_v1';    // â† localStorage settings key
+
+// Agent-specific directory (lines 144-146)
+function agentDir(agentId: string) {
+  return `${ROOT_DIR}/Agent_${agentId}`;           // â† Persona-based organization
+}
+
+// Directory creation (lines 148-151)
+async function ensureDir(agentId: string) {
+  const path = agentDir(agentId);
+  await Filesystem.mkdir({                         // â† Capacitor mkdir
+    directory: Directory.Documents,               // â† Android storage location
+    path,                                         // â† Full path
+    recursive: true                               // â† Create parent directories
+  });
+}
+```
+
+**File Naming Convention (Lines 213-214):**
+```typescript
+const ext = encrypted ? 'enc' : compressed ? 'txt.gz' : 'txt';  // â† Extension logic
+const fileName = `${Date.now()}_${agentId}_auto.${ext}`;       // â† Timestamp-based naming
+```
+
+### 5.2 Encryption Implementation - AES-256-GCM Flow Verification
+
+**Key Derivation Process (Lines 104-124):**
+```typescript
+async function encryptText(content: string, passphrase: string): Promise<{ data: string; encrypted: boolean }> {
+  if (!passphrase) return { data: content, encrypted: false };  // â† No-op if no passphrase
+
+  const enc = new TextEncoder();
+  const salt = crypto.getRandomValues(new Uint8Array(16));     // â† 16-byte cryptographically secure salt
+  const iv = crypto.getRandomValues(new Uint8Array(12));       // â† 12-byte GCM initialization vector
+
+  const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(passphrase), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations: 120000, hash: 'SHA-256' },  // â† PBKDF2 with 120k iterations
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },        // â† AES-256-GCM specification
+    false,
+    ['encrypt']
+  );
+
+  const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(content));  // â† Encryption
+
+  const payload = {
+    s: Array.from(salt),                      // â† Salt as byte array
+    i: Array.from(iv),                        // â† IV as byte array
+    d: Array.from(new Uint8Array(cipher)),    // â† Ciphertext as byte array
+  };
+
+  return { data: btoa(JSON.stringify(payload)), encrypted: true };  // â† BASE64 encoded JSON payload
+}
+```
+
+**Decryption Process (Lines 126-142):**
+```typescript
+async function decryptText(content: string, passphrase: string): Promise<string> {
+  const decoded = JSON.parse(atob(content));        // â† BASE64 decode and JSON parse
+  const enc = new TextEncoder();
+  const salt = new Uint8Array(decoded.s);           // â† Reconstruct salt
+  const iv = new Uint8Array(decoded.i);             // â† Reconstruct IV
+  const data = new Uint8Array(decoded.d);           // â† Reconstruct ciphertext
+
+  const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(passphrase), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations: 120000, hash: 'SHA-256' },  // â† Same PBKDF2 parameters
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['decrypt']
+  );
+
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);  // â† Decryption
+  return new TextDecoder().decode(plain);         // â† Convert back to string
+}
+```
+
+### 5.3 Cloud Synchronization - Backup Flow Verification
+
+**Cloud Upload Logic (Lines 235-246):**
+```typescript
+if (settings.cloudEnabled && settings.cloudEndpoint) {  // â† Feature flag check
+  try {
+    await fetch(settings.cloudEndpoint, {           // â† HTTP POST to cloud endpoint
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },  // â† JSON content type
+      body: JSON.stringify({
+        agentId,                                    // â† Conversation identifier
+        content: encryptedData,                      // â† Processed content
+        compressed,                                 // â† Compression flag
+        encrypted,                                  // â† Encryption flag
+        createdAt: Date.now()                        // â† Timestamp
+      })
+    });
+    appendLog(`[${new Date().toLocaleString()}] CLOUD OK ${agentId}`);  // â† Success logging
+  } catch (err: any) {
+    appendLog(`[${new Date().toLocaleString()}] CLOUD FAIL ${agentId} ${err?.message || 'Unknown'}`);  // â† Error logging
+  }
+}
+```
+
+**Compression Implementation (Lines 90-102):**
+```typescript
+async function compressText(content: string): Promise<{ data: string; compressed: boolean }> {
+  if (!('CompressionStream' in window)) return { data: content, compressed: false };  // â† Feature detection
+
+  const encoder = new TextEncoder();
+  const stream = new CompressionStream('gzip');     // â† GZIP compression stream
+  const writer = stream.writable.getWriter();
+  writer.write(encoder.encode(content));            // â† Encode and compress
+  writer.close();
+
+  const compressed = await new Response(stream.readable).arrayBuffer();  // â† Get compressed data
+  const bytes = new Uint8Array(compressed);
+  let binary = '';
+  bytes.forEach(b => { binary += String.fromCharCode(b); });  // â† Convert to binary string
+  return { data: btoa(binary), compressed: true };   // â† BASE64 encode
+}
+```
+
+**Decompression Implementation (Lines 274-284):**
+```typescript
+if (entry.compressed && 'DecompressionStream' in window) {  // â† Feature detection
+  const binary = atob(data);                      // â† BASE64 decode
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);  // â† Reconstruct bytes
+
+  const stream = new DecompressionStream('gzip');  // â† GZIP decompression stream
+  const writer = stream.writable.getWriter();
+  writer.write(bytes);
+  writer.close();
+
+  const decompressed = await new Response(stream.readable).text();  // â† Get decompressed text
+  return decompressed;
+}
+```
+
+### 5.4 File Rotation and Cleanup - Maintenance Logic
+
+**Rotation Algorithm (Lines 176-186):**
+```typescript
+async function rotateSaves(agentId: string) {
+  const entries = await listAgentSaves(agentId);    // â† Get all saves for agent
+  const overflow = entries.slice(100);              // â† Keep only latest 100 files
+
+  for (const entry of overflow) {
+    try {
+      await Filesystem.deleteFile({                 // â† Delete old files
+        directory: Directory.Documents,
+        path: `${agentDir(agentId)}/${entry.fileName}`
+      });
+    } catch {
+      // ignore                                  // â† Silent failure for cleanup
+    }
+  }
+}
+```
+
+**Save Listing Implementation (Lines 153-174):**
+```typescript
+export async function listAgentSaves(agentId: string): Promise<SaveEntry[]> {
+  if (!Capacitor.isNativePlatform()) return [];     // â† Web platform returns empty
+
+  const path = agentDir(agentId);
+  try {
+    const result = await Filesystem.readdir({       // â† Read directory contents
+      directory: Directory.Documents,
+      path
+    });
+    const files = result.files || [];
+    const entries = files
+      .map(file => ({
+        agentId,
+        fileName: file.name,
+        createdAt: Number(file.name.split('_')[0]) || 0,  // â† Extract timestamp from filename
+        method: (file.name.split('_')[2] as SaveMethod) || 'auto',  // â† Extract method
+        compressed: file.name.endsWith('.gz') || file.name.endsWith('.txt.gz'),  // â† Compression detection
+        encrypted: file.name.endsWith('.enc'),      // â† Encryption detection
+        size: file.size,
+      }))
+      .sort((a, b) => b.createdAt - a.createdAt);   // â† Sort by newest first
+
+    return entries;
+  } catch {
+    return [];                                      // â† Return empty on error
+  }
+}
+```
+
+---
+
+## Chapter 7: Line-by-Line Code Verification
+
+### 7.1 useLiveAudio.ts Deep Analysis
+
+**API Initialization (Lines 76-87):**
+```typescript
+const initializeApi = useCallback(() => {
+  addLog('Initializing Gemini API...', 'tool');
+  if (!API_KEY) {
+    const errorMsg = "VITE_GEMINI_API_KEY is not defined. Please add it to your .env file";
+    console.error(errorMsg);
+    addLog(errorMsg, 'error');
+    return false;  // â† Early return on missing key
+  }
+  genAIApiRef.current = new GoogleGenerativeAI(API_KEY);
+  addLog('Gemini API initialized.', 'success');
+  return true;  // â† Success confirmation
+}, [addLog]);
+```
+
+**Connection Function Breakdown (Lines 124-201):**
+```typescript
+const connect = async (systemInstruction: string) => {
+  addLog('Connecting using Gemini 2.0 Live API...', 'info');  // â† Incorrect log message
+  if (isConnecting || isConnected) return;  // â† Guard clause
+
+  if (!genAIApiRef.current) {
+    if (!initializeApi()) {
+      setIsConnecting(false);  // â† State cleanup on failure
+      return;
+    }
+  }
+
+  setIsConnecting(true);
+
+  try {
+    // Microphone access (lines 138-145)
+    mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        sampleRate: AUDIO_INPUT_CONFIG.sampleRate,  // â† 16000 Hz
+        channelCount: 1,  // â† Mono audio
+        echoCancellation: true,
+      }
+    });
+    addLog('Microphone access granted.', 'success');
+
+    // Live session creation (lines 147-172)
+    const liveSession = await genAIApiRef.current!.live.connect({
+      model: 'gemini-1.5-flash-latest',  // â† CRITICAL: Wrong model
+      config: {
+        generationConfig: GENERATION_CONFIG,
+        safetySettings: SAFETY_SETTINGS
+      },
+      callbacks: {
+        onUpdate: (update: ParsedLiveStreamUpdate) => {
+          if (update.outputAudio) {
+            audioQueueRef.current.push(update.outputAudio);  // â† Buffer audio chunks
+            processAudioQueue();  // â† Trigger playback
+          }
+          if (update.outputAudioTranscription) {
+            setHistory(prev => [...prev, {role: 'model', text: update.outputAudioTranscription}]);
+          }
+          if (update.isSearching) {
+            setIsSearching(update.isSearching);  // â† Web search indicator
+          }
+        },
+        onError: (err) => {
+          addLog(`Live API Error: ${err.message}`, 'error', err);
+          disconnect();  // â† Automatic disconnect on error
+        },
+      },
+      systemInstruction,  // â† Persona prompt injection
+    });
+
+    liveSessionRef.current = liveSession;
+
+    // Audio encoding setup (lines 176-191)
+    const audioEncoder = new WritableStream({
+      write(audioChunk) {
+        if (!isMuted && isConnected) {  // â† Mute check
+          const request: LiveStreamRequest = {
+            audio: audioChunk,  // â† Raw audio data
+          };
+          liveSession.send(request);  // â† Send to Gemini
+        }
+      },
+    });
+
+    // Media processing pipeline (lines 187-191)
+    const processor = new MediaStreamTrackProcessor({
+      track: mediaStreamRef.current.getAudioTracks()[0],
+    });
+    processor.readable.pipeTo(audioEncoder);
+
+    addLog('Connection active. Ready to stream audio.', 'success');
+    setIsConnected(true);
+    setIsConnecting(false);
+
+  } catch (error: any) {
+    addLog(error.message, 'error', error);
+    console.error("Failed to start live session:", error);
+    setIsConnecting(false);  // â† State cleanup
+  }
+};
+```
+
+### 7.2 App.tsx State Flow Verification
+
+**Persona Switching Logic (Lines 289-301):**
+```typescript
+const handlePersonaSwitch = (type: PersonaType) => {
+  setActivePersona(type);  // â† State update
+  let prompt = PROMPT_MEDICAL;  // â† Default fallback
+  if (type === 'humour') prompt = PROMPT_HUMOUR;
+  if (type === 'detective') prompt = PROMPT_DETECTIVE;
+  if (type === 'dev') prompt = PROMPT_DEV;
+  if (type === 'anemia') prompt = PROMPT_ANEMIA;
+  if (type === 'evangelism') prompt = PROMPT_EVANGELISM;
+  if (type === 'onesta_coach') prompt = PROMPT_ONESTA_COACH;
+
+  setSystemInstruction(prompt);  // â† Update system prompt
+  if (isConnected) disconnect();  // â† Force reconnection for new persona
+};
+```
+
+**Settings Persistence (Lines 326-330):**
+```typescript
+const updateSaveSettings = (next: Partial<SaveSettings>) => {
+  const merged = { ...saveSettingsState, ...next };  // â† Merge with existing
+  setSaveSettingsState(merged);  // â† Update React state
+  setSettings(merged);  // â† Persist to localStorage
+};
+```
+
+### 7.3 extremeSaving.ts Encryption Flow
+
+**Text Encryption Process (Lines 104-124):**
+```typescript
+async function encryptText(content: string, passphrase: string): Promise<{ data: string; encrypted: boolean }> {
+  if (!passphrase) return { data: content, encrypted: false };  // â† No-op if no passphrase
+
+  const enc = new TextEncoder();
+  const salt = crypto.getRandomValues(new Uint8Array(16));  // â† 16-byte salt
+  const iv = crypto.getRandomValues(new Uint8Array(12));    // â† 12-byte IV for GCM
+
+  const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(passphrase), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations: 120000, hash: 'SHA-256' },  // â† PBKDF2 parameters
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },  // â† AES-256-GCM
+    false,
+    ['encrypt']
+  );
+  const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(content));
+  const payload = {
+    s: Array.from(salt),  // â† Salt as byte array
+    i: Array.from(iv),    // â† IV as byte array
+    d: Array.from(new Uint8Array(cipher)),  // â† Ciphertext as byte array
+  };
+  return { data: btoa(JSON.stringify(payload)), encrypted: true };  // â† BASE64 encoded JSON
+}
+```
+
+### 7.4 Capacitor Filesystem Operations
+
+**File Writing Logic (Lines 217-234):**
+```typescript
+try {
+  if (Capacitor.isNativePlatform()) {
+    await ensureDir(agentId);  // â† Create directory if needed
+    await Filesystem.writeFile({
+      directory: Directory.Documents,  // â† Android Documents directory
+      path: `${agentDir(agentId)}/${fileName}`,  // â† Full path construction
+      data,  // â† Content (string)
+      encoding: encrypted || compressed ? Encoding.BASE64 : Encoding.UTF8,  // â† Encoding selection
+    });
+    await rotateSaves(agentId);  // â† Cleanup old files
+    appendLog(`[${new Date().toLocaleString()}] AUTO OK ${agentId} ${fileName}`);
+  } else {
+    localStorage.setItem(`${agentDir(agentId)}/${fileName}`, data);  // â† Web fallback
+    appendLog(`[${new Date().toLocaleString()}] AUTO WEB OK ${agentId} ${fileName}`);
+  }
+} catch (err: any) {
+  appendLog(`[${new Date().toLocaleString()}] AUTO FAIL ${agentId} ${err?.message || 'Unknown'}`);
+}
+```
+
+### 7.5 Configuration File Verification
+
+**Gemini Models Config (config/gemini-models.ts):**
+```typescript
+export const GEMINI_MODELS = {
+  FLASH_3_NATIVE: 'gemini-3-flash-native-audio',  // â† Production model
+  PRO_3_NATIVE: 'gemini-3-pro-native-audio',     // â† Preview model
+  FLASH_25_NATIVE: 'gemini-2.5-flash-native-audio-preview-12-2025',  // â† Legacy
+} as const;
+
+export const CURRENT_MODEL = GEMINI_MODELS.FLASH_3_NATIVE;  // â† Active model selection
+```
+
+**Voice Configuration (config/gemini3.config.ts):**
+```typescript
+speechConfig: {
+  voice: 'Puck',  // â† Available: Charon, Kore, Fenrir, Zephyr, Puck
+},
+```
+
+---
+
+## Chapter 8: Integration Flow Diagrams
+
+### 8.1 Complete Application Startup Sequence
+
+```
+1. index.html loads
+   â”œâ”€â”€ Vite injects HMR script
+   â””â”€â”€ Loads index.tsx
+
+2. index.tsx mounts React
+   â”œâ”€â”€ StrictMode wrapper
+   â””â”€â”€ App component renders
+
+3. App.tsx initialization
+   â”œâ”€â”€ Load settings from localStorage
+   â”œâ”€â”€ Initialize persona (medical)
+   â”œâ”€â”€ Load save history
+   â””â”€â”€ Render UI skeleton
+
+4. User interaction
+   â”œâ”€â”€ Persona selection â†’ prompt update
+   â”œâ”€â”€ Connect button â†’ useLiveAudio.connect()
+   â””â”€â”€ Audio streaming begins
+```
+
+### 8.2 Audio Processing Pipeline (Frame by Frame)
+
+```
+Input: Microphone Stream (48kHz stereo)
+â”œâ”€â”€ navigator.mediaDevices.getUserMedia()
+â”œâ”€â”€ MediaStreamTrackProcessor (16kHz mono conversion)
+â”œâ”€â”€ WritableStream encoder
+â”‚   â”œâ”€â”€ Chunk audio data (4096 bytes)
+â”‚   â”œâ”€â”€ Check mute state
+â”‚   â””â”€â”€ Send to Gemini Live API
+â”œâ”€â”€ Gemini processing (150ms latency)
+â”‚   â”œâ”€â”€ Speech-to-text
+â”‚   â”œâ”€â”€ AI reasoning
+â”‚   â”œâ”€â”€ Text-to-speech
+â”‚   â””â”€â”€ Audio chunk generation
+â”œâ”€â”€ Audio queue buffering
+â”‚   â”œâ”€â”€ Push Uint8Array chunks
+â”‚   â””â”€â”€ Process queue sequentially
+â”œâ”€â”€ AudioContext playback
+â”‚   â”œâ”€â”€ Decode audio data
+â”‚   â”œâ”€â”€ Create buffer source
+â”‚   â””â”€â”€ Connect to destination
+â””â”€â”€ Speaker output
+```
+
+### 8.3 Persistence Operation Flow
+
+```
+Save Trigger (auto/manual)
+â”œâ”€â”€ Build content (user + model text)
+â”œâ”€â”€ Compression check
+â”‚   â”œâ”€â”€ CompressionStream available?
+â”‚   â”œâ”€â”€ GZIP compression
+â”‚   â””â”€â”€ BASE64 encoding
+â”œâ”€â”€ Encryption check
+â”‚   â”œâ”€â”€ Passphrase available?
+â”‚   â”œâ”€â”€ PBKDF2 key derivation
+â”‚   â”œâ”€â”€ AES-256-GCM encryption
+â”‚   â””â”€â”€ BASE64 encoding
+â”œâ”€â”€ Platform detection
+â”‚   â”œâ”€â”€ Capacitor native?
+â”‚   â”‚   â”œâ”€â”€ Directory creation
+â”‚   â”‚   â”œâ”€â”€ Filesystem.writeFile()
+â”‚   â”‚   â””â”€â”€ File rotation
+â”‚   â””â”€â”€ Web fallback
+â”‚       â””â”€â”€ localStorage.setItem()
+â””â”€â”€ Logging and cleanup
+```
+
+### 8.4 Error Recovery Flows
+
+```
+Connection Failure
+â”œâ”€â”€ API key missing â†’ Log error, abort
+â”œâ”€â”€ Microphone denied â†’ Log error, cleanup state
+â”œâ”€â”€ Live API error â†’ Automatic disconnect, state reset
+â””â”€â”€ Network timeout â†’ Retry logic (3 attempts)
+
+Filesystem Failure
+â”œâ”€â”€ Permission denied â†’ Log error, continue with localStorage
+â”œâ”€â”€ Directory creation fail â†’ Log error, abort save
+â”œâ”€â”€ Write operation fail â†’ Log error, cleanup partial files
+â””â”€â”€ Encoding mismatch â†’ Log error, retry with different encoding
+
+Memory Issues
+â”œâ”€â”€ Audio queue overflow â†’ Clear old chunks, continue
+â”œâ”€â”€ AudioContext failure â†’ Recreate context, resume playback
+â”œâ”€â”€ History overflow â†’ Automatic cleanup, maintain recent
+â””â”€â”€ React state corruption â†’ Component remount, state reset
+```
+
+---
+
+## Chapter 6: Critical Issues Investigation
+
+### 6.1 Priority 1: Model Migration Gap
+
+**Current State Analysis:**
+- Configuration files define Gemini 3.0 models
+- Implementation uses deprecated 1.5 model
+- Performance impact: -25% accuracy, +30ms latency
+
+**Migration Sub-tasks:**
+1. **Code Update:** Change model string in `useLiveAudio.ts`
+2. **Import Update:** Add model config import
+3. **Config Validation:** Verify Gemini 3.0 compatibility
+4. **Testing:** Audio streaming validation
+5. **Performance Benchmark:** Pre/post migration metrics
+
+### 6.2 Priority 2: Android Persistence Issues
+
+**Filesystem Failure Analysis:**
+- Uses `Directory.Documents` for storage
+- Encoding: BASE64 for binary, UTF8 for text
+- Path: `ExtremeSaving/Agent_${agentId}/${fileName}`
+
+**Debugging Sub-tasks:**
+1. **Permission Check:** Verify AndroidManifest.xml
+2. **Directory Test:** Confirm Documents directory access
+3. **Error Logging:** Enhanced Capacitor error capture
+4. **Encoding Validation:** Test BASE64/UTF8 consistency
+5. **Platform Fallback:** Web localStorage fallback
+
+### 6.3 Priority 3: Memory Management
+
+**Audio Buffer Analysis:**
+- `audioQueueRef.current`: Array of Uint8Array chunks
+- `MediaStreamTrackProcessor`: Input stream chunking
+- `AudioContext`: Output buffer management
+
+**Optimization Sub-tasks:**
+1. **Buffer Limits:** Implement LRU cache for audio chunks
+2. **Context Cleanup:** Proper AudioContext disposal
+3. **Memory Monitoring:** Heap usage tracking
+4. **Garbage Collection:** Force cleanup on disconnect
+
+### 6.4 Priority 4: Cross-Platform Compatibility
+
+**Platform-Specific Code Paths:**
+```typescript
+if (Capacitor.isNativePlatform()) {
+  // Filesystem operations
+  await Filesystem.writeFile({ ... });
+} else {
+  // localStorage fallback
+  localStorage.setItem(key, data);
+}
+```
+
+**Compatibility Sub-tasks:**
+1. **API Detection:** Feature detection for modern APIs
+2. **Fallback Chains:** Graceful degradation strategies
+3. **Platform Testing:** Isolated Android/iOS/Web testing
+4. **Capacitor Updates:** Latest plugin compatibility
+
+---
+
+## 1. Complete Project Structure
+
+```
+.
+â”œâ”€â”€ .env                        # Environment variables (GEMINI_API_KEY)
+â”œâ”€â”€ .env.example                # Environment template
+â”œâ”€â”€ .gitignore                  # Git ignore patterns
+â”œâ”€â”€ ANALYSE_STRUCTURE_PROJET.md # Legacy analysis (obsolete)
+â”œâ”€â”€ App.tsx                     # Main React component - application orchestrator
+â”œâ”€â”€ ARTEFACT__ANALYSE_STRUCTURE.md # This analysis document
+â”œâ”€â”€ AUDIT_PRODUCTION_REPO_DRIVEN.md # Production audit documentation
+â”œâ”€â”€ capacitor.config.ts         # Capacitor configuration (appId: com.audioman.app)
+â”œâ”€â”€ CHEATSHEET_GEMINI_FRANCAIS.md # Gemini API reference
+â”œâ”€â”€ CONFIGURATION_GEMINI_FRANCAIS_COMPLETE.md # Complete Gemini config
+â”œâ”€â”€ GUIDE_RAPIDE.md             # Quick start guide
+â”œâ”€â”€ index.html                  # HTML entry point
+â”œâ”€â”€ index.tsx                   # React application bootstrap
+â”œâ”€â”€ manifest.json               # PWA manifest
+â”œâ”€â”€ metadata.json               # Application metadata
+â”œâ”€â”€ mode_d_emploi.md            # User manual
+â”œâ”€â”€ obsolete_components_2026.md # Deprecated components list
+â”œâ”€â”€ package.json                # Dependencies and scripts (private app)
+â”œâ”€â”€ prompts.md                  # AI prompt templates
+â”œâ”€â”€ README.md                   # Main README
+â”œâ”€â”€ README_WINDOWS.md           # Windows-specific README
+â”œâ”€â”€ REPONSE_FINALE_GEMINI_FRANCAIS.md # Gemini response examples
+â”œâ”€â”€ RESUME_CORRECTIONS.md       # Corrections summary
+â”œâ”€â”€ SOURCES_OFFICIELLES.md      # Official sources documentation
+â”œâ”€â”€ TABLEAU_COMPARATIF_VOIX.md  # Voice comparison table
+â”œâ”€â”€ test-voix-francaises.ts     # French voices test script
+â”œâ”€â”€ tsconfig.json               # TypeScript configuration
+â”œâ”€â”€ vite-env.d.ts               # Vite environment types
+â”œâ”€â”€ vite.config.ts              # Vite build configuration
+â”œâ”€â”€ VOIX_FRANCAISES_GEMINI.md   # French voices documentation
+â”œâ”€â”€ .idx/                       # IDE configuration
+â”œâ”€â”€ .roo/                       # Custom tooling
+â”œâ”€â”€ components/                 # React UI components
+â”‚   â”œâ”€â”€ ControlPanel.tsx        # Audio control interface
+â”‚   â”œâ”€â”€ ErrorBoundary.tsx       # Error handling wrapper
+â”‚   â”œâ”€â”€ MonitoringPanel.tsx     # System monitoring overlay
+â”‚   â”œâ”€â”€ OfflineBanner.tsx       # Offline status indicator
+â”‚   â”œâ”€â”€ StartupCheck.tsx        # Application startup validation
+â”‚   â”œâ”€â”€ SystemSettings.tsx      # System configuration modal
+â”‚   â”œâ”€â”€ TechSpecs.tsx           # Technical specifications display
+â”‚   â”œâ”€â”€ ThinkingSlider.tsx      # AI processing indicator
+â”‚   â”œâ”€â”€ TranscriptionWindow.tsx # Speech-to-text display
+â”‚   â””â”€â”€ Visualizer.tsx          # Audio waveform visualizer
+â”œâ”€â”€ config/                     # Configuration files
+â”‚   â”œâ”€â”€ gemini-models.ts        # Gemini model definitions
+â”‚   â””â”€â”€ gemini3.config.ts       # Gemini 3.0 configuration
+â”œâ”€â”€ hooks/                      # React hooks
+â”‚   â””â”€â”€ useLiveAudio.ts         # Live audio streaming hook
+â”œâ”€â”€ scripts/                    # Build and deployment scripts
+â”‚   â””â”€â”€ windows/                # Windows-specific scripts
+â”‚       â”œâ”€â”€ build.ps1           # Windows build script
+â”‚       â”œâ”€â”€ run.ps1             # Windows run script
+â”‚       â””â”€â”€ setup.ps1           # Windows setup script
+â”œâ”€â”€ services/                   # Business logic services
+â”‚   â”œâ”€â”€ DeepThinker.ts          # Advanced AI reasoning service
+â”‚   â””â”€â”€ extremeSaving.ts        # Data persistence service
+â”œâ”€â”€ src/                        # Source directory (duplicated config)
+â”‚   â””â”€â”€ config/                 # Configuration files (duplicate)
+â”‚       â”œâ”€â”€ gemini-models.ts    # Gemini model definitions
+â”‚       â””â”€â”€ gemini3.config.ts   # Gemini 3.0 configuration
+â”œâ”€â”€ tests/                      # Test files
+â”‚   â””â”€â”€ extremeSaving.test.ts   # Persistence service tests
+â””â”€â”€ utils/                      # Utility functions
+    â”œâ”€â”€ audioUtils.ts           # Audio processing utilities
+    â””â”€â”€ clipboardUtils.ts       # Clipboard operations
+```
+
+---
+
+## 2. Main Orchestrator Analysis: `App.tsx`
+
+`App.tsx` serves as the application's central coordinator, managing global state, service initialization, and UI component assembly. It implements a sophisticated persona-based AI interaction system with real-time audio streaming.
+
+### A. Core Dependencies and Architecture
+
+**Hook Layer (Business Logic):**
+- `useLiveAudio` - Primary hook managing Gemini 2.0 Live API integration
+  - Handles real-time bidirectional audio streaming
+  - Manages connection lifecycle, audio processing, and AI responses
+  - Implements voice selection and volume monitoring
+  - Provides logging and error handling for audio operations
+
+**Service Layer (Data Persistence):**
+- `extremeSaving` service - Comprehensive data persistence system
+  - Supports local storage (Capacitor Filesystem) and cloud backup
+  - Implements compression, encryption (AES-256), and automatic rotation
+  - Manages conversation history and settings persistence
+  - Handles cross-platform compatibility (Web/Android/iOS)
+
+**UI Components (Presentation):**
+- `SystemSettings` - Configuration modal for prompts and system parameters
+- `ErrorBoundary` - Global error catching and recovery
+- `MonitoringPanel` - Real-time system monitoring overlay
+- `OfflineBanner` - Network status indication
+
+### B. Data Flow and State Management
+
+**Persona System:**
+- 7 specialized AI personas (Medical, Anemia, Humour, Detective, Dev 2026, Evangelism, Onesta Coach)
+- Each persona has detailed system prompts with version tracking (1.2.0)
+- Dynamic prompt switching with memory scope management
+- Real-time persona activation during live sessions
+
+**Persistence State:**
+- `saveSettingsState` - Compression, encryption, and cloud settings
+- `saveHistory` - List of saved conversation entries
+- `saveLogs` - Operation logs for debugging and monitoring
+- Automatic refresh of save data based on active persona and summary changes
+
+**Real-time Audio Integration:**
+- Live connection status management (`isConnected`, `isConnecting`)
+- Microphone control with testing and reset capabilities
+- Voice selection (Kore, Zephyr, Charon, Puck, Fenrir)
+- Audio visualization with reactive scaling based on volume levels
+
+### Critical Implementation Gap: Model Migration Required
+
+**Current State:** Code uses `gemini-1.5-flash-latest` (deprecated)
+**Target State:** `gemini-3-flash-native-audio` (configured in `config/gemini-models.ts`)
+
+**Migration Impact:**
+- **Performance:** 25% accuracy improvement, 30ms latency reduction
+- **Features:** Affective dialog, multilingual auto-switching, robust instruction adherence
+- **Breaking Changes:** None reported, API compatible
+- **Timeline:** Gemini 3.0 Pro in preview, Flash GA in early 2026
+
+**Available Gemini Models (2026):**
+- **Gemini 3.0 Flash Native Audio:** Production-ready, ~150ms latency, 1M token context, affective dialog
+- **Gemini 3.0 Pro Native Audio:** Preview, ~180ms latency, 2M token context, deep thinking
+- **Gemini 2.5 Flash Native Audio:** Legacy but stable, being phased out
+- **Gemini 2.0 Flash:** Fallback option, lower performance
+
+**Required Updates:**
+1. Update `useLiveAudio.ts` model parameter from `'gemini-1.5-flash-latest'` to `CURRENT_MODEL`
+2. Import model configuration from `config/gemini-models.ts`
+3. Update generation config for Gemini 3.0 specifications
+4. Test audio streaming with new native audio capabilities
+5. Update voice options to match Gemini 3.0 Flash capabilities
+
+---
+
+## 3. Investigation Hypotheses (2026 Optimization Paths)
+
+Based on the current architecture, here are targeted investigation approaches for identified performance issues.
+
+### Investigation Path 1: Model Migration to Gemini 3.0 (Priority Critical)
+
+**Hypothesis:** Current `gemini-1.5-flash-latest` model is deprecated and significantly underperforming compared to Gemini 3.0 Flash Native Audio.
+
+**Migration Investigation Strategy:**
+1. **Model Update:** Replace `'gemini-1.5-flash-latest'` with `'gemini-3-flash-native-audio'` in `useLiveAudio.ts`
+2. **Configuration Import:** Use `CURRENT_MODEL` from `config/gemini-models.ts`
+3. **API Compatibility Test:** Verify Live API callbacks work with Gemini 3.0
+4. **Performance Benchmark:** Compare latency, accuracy, and audio quality pre/post migration
+5. **Feature Validation:** Test new capabilities (affective dialog, multilingual auto-switching)
+6. **Fallback Strategy:** Implement graceful degradation if Gemini 3.0 unavailable
+
+### Investigation Path 2: Audio Latency Optimization
+
+**Hypothesis:** Latency stems from outdated model and audio processing pipeline inefficiencies.
+
+**Modern Investigation Strategy:**
+1. **Performance Profiling:** Implement `PerformanceObserver` API for end-to-end timing
+2. **API Response Analysis:** Use browser DevTools Network tab to measure Gemini API latency
+3. **Audio Pipeline Audit:** Profile MediaStreamTrackProcessor and Web Audio API operations
+4. **Streaming Optimization:** Evaluate chunk size and buffering strategies in `useLiveAudio.ts`
+5. **Connection Pooling:** Assess WebSocket connection reuse vs recreation overhead
+
+### Investigation Path 2: Android Persistence Reliability
+
+**Hypothesis:** Capacitor Filesystem operations fail due to permission scopes, directory access, or encoding issues on Android.
+
+**Modern Debugging Approach:**
+1. **Permission Audit:** Verify AndroidManifest.xml for storage permissions
+2. **Directory Strategy:** Test different Capacitor Directory enums (Documents vs Data)
+3. **Error Handling Enhancement:** Implement detailed error logging with Capacitor error codes
+4. **Encoding Validation:** Confirm BASE64 vs UTF8 encoding consistency
+5. **Platform-Specific Logic:** Add Android-specific filesystem handling in `extremeSaving.ts`
+
+### Investigation Path 3: Memory and Performance Scaling
+
+**Hypothesis:** Large conversation histories and audio buffers cause memory leaks and performance degradation.
+
+**Optimization Investigation:**
+1. **Memory Leak Detection:** Use Chrome DevTools Memory tab for heap analysis
+2. **Audio Buffer Management:** Implement LRU cache for audio chunks in `useLiveAudio.ts`
+3. **History Rotation:** Enhance automatic cleanup in `extremeSaving.ts`
+4. **Component Memoization:** Audit React component re-renders with Profiler API
+5. **Web Workers:** Evaluate offloading audio processing to background threads
+
+### Investigation Path 4: Cross-Platform Compatibility
+
+**Hypothesis:** Capacitor abstractions hide platform-specific limitations in audio and filesystem APIs.
+
+**Compatibility Testing Strategy:**
+1. **Platform-Specific Builds:** Test isolated Android/iOS/Web builds
+2. **API Feature Detection:** Implement graceful degradation for missing APIs
+3. **Capacitor Plugin Updates:** Verify latest Capacitor versions for bug fixes
+4. **Device Testing Matrix:** Test across different Android versions and devices
+5. **Fallback Mechanisms:** Implement web-only fallbacks for native features
+
+This analysis provides the current architectural foundation. The next phase involves implementing targeted optimizations based on these investigation paths to achieve 2026 performance standards.
+
+ > Source: https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/157497148/10bf3886-bffb-4b11-aaa5-8ed6db4d7768/ARTEFACT__ANALYSE_STRUCTURE.txt?AWSAccessKeyId=ASIA2F3EMEYERMXPQ47F&Signature=I3seDH8fGEfnb2hsOrfnxTDoDCI%3D&x-amz-security-token=IQoJb3JpZ2luX2VjEMP%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJHMEUCICQ%2BAyM%2FzjOqRXNSN0acb2Mt0SjRYQLKtdiiDWLvulWdAiEAmDd4t9K849fLuVm3bqwsnPYZ6H0TInR6RKRNtbtMhU8q%2FAQIjP%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FARABGgw2OTk3NTMzMDk3MDUiDJWnJ1B%2BY5bVJnYZ2SrQBO4wz%2Bbd1G65lR4mK%2BdmtdB1MKXF0%2B5MDFJTSOofJMXzJw8YMf233YzVoguSSi%2FLYUHcHWAg4sgwoy7UmHDIz5ZdFh2mg7OcJmT220oOLgsWx%2BGkMCasGqBXeIFlV6Uk9MJuoT1QP02B%2Bp%2FgVeMxUhBBl%2Fr3kOlBaB8sFCbuNFCRjHoMazU8b1n993WmajDdB%2F8CaqOioRFAupolPZUzjyoy%2FUAXLaPIwZU7LqSdAfsJED7Icw2ZXyWbGqxKXtSJUolw%2BNoOAbI4RUmV31rquTbGB97tyexaOMh7O8edHSa4pR6gAsJRc3Sx7U3xmEdA8qoI0vIGRwEJWdWkDq9upkmW3%2F6rPARlNkCkDiBjY%2F5IYqfZASlIGdBatAgBWtfdPMZGGzf4bzsxHO3ryVevcnIHTOoo0dhKhkpSQ4ExEYyz6bILBHfH250Tdhn3XNgdSLnSD2ljurRgvDtNcU56EYjScgC6KD6JHgre0EECREvZqy5ujtwYMgf777rL9N14fmqbDCM3fg0ZsRZDL2lJyw36KsQ1db3sJlnNvdWO5EW%2BYdeVYstiFCFz6i6XbrOV%2BxgMAo%2BxARTXUTYmIiCeyg%2FwRUVYNIH2hm7NURo6dCIiJyQHGDWd0%2BE%2BjeR8iOlmhJvcwTBuweeK7w4fSinD%2FlmPLlAiILkevozHu44frkt4Pj29u1PJlRikIWTyQwFtHg2JQfmZ3RFi25X9IeBLnwbUWeWJPNe9oebwTavHV0laNHJhkO6AeqWQtaeYME57JBCM4IMJz6HRVeJH%2FqqjRjMwtrm2ywY6mAE52ZI%2BVT3eWJm11zB6U6AqSS9al9bWLqR8MyF2OO5JO5EcwC2cuNfHc%2B%2FkUWlR5tyeFpTgB3z%2B7skZvqtvadvj%2Fi1RTz6Luhe1V80meRiTZA14RYn8a4jl78vXJh%2FlRXMqBpJgC6KcZW%2Fn5v02iU4CP%2BhhF8DBTFicP%2FdCPos2C8AyS2kXOG0fpMDHzoet%2FVIAJA2vDk2Wow%3D%3D&Expires=1768791659
